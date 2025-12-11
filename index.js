@@ -2,7 +2,7 @@ const express = require('express');
 const axios = require('axios');
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
 const MAIL_TM_API = 'https://api.mail.tm';
 
@@ -13,8 +13,6 @@ const axiosInstance = axios.create({
   },
   timeout: 30000
 });
-
-const activeEmails = new Map();
 
 function generateRandomString(length) {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -48,7 +46,7 @@ app.get('/temp', async (req, res) => {
     const email = `${username}@${domain}`;
     const password = generateRandomString(16);
     
-    const accountResponse = await axiosInstance.post(`${MAIL_TM_API}/accounts`, {
+    await axiosInstance.post(`${MAIL_TM_API}/accounts`, {
       address: email,
       password: password
     });
@@ -59,20 +57,13 @@ app.get('/temp', async (req, res) => {
     });
     
     const token = tokenResponse.data.token;
-    const accountId = accountResponse.data.id;
-    
-    activeEmails.set(email, {
-      token: token,
-      accountId: accountId,
-      password: password,
-      createdAt: new Date().toISOString()
-    });
     
     res.json({
       success: true,
       email: email,
       token: token,
-      info: 'Email temporaire créé avec succès. Utilisez /boite?message=EMAIL pour voir les messages reçus.'
+      password: password,
+      info: 'Conservez le token pour récupérer la boîte de réception avec /boite?message=EMAIL&token=TOKEN'
     });
     
   } catch (error) {
@@ -85,28 +76,24 @@ app.get('/temp', async (req, res) => {
 });
 
 app.get('/boite', async (req, res) => {
-  const { message } = req.query;
+  const { message, token } = req.query;
   
   if (!message || !message.includes('@')) {
     return res.status(400).json({ 
-      error: 'Paramètre invalide. Fournissez un email valide avec message=EMAIL' 
+      error: 'Paramètre invalide. Fournissez un email valide avec message=EMAIL&token=TOKEN' 
+    });
+  }
+  
+  if (!token) {
+    return res.status(400).json({ 
+      error: 'Token manquant. Utilisez /boite?message=EMAIL&token=TOKEN'
     });
   }
   
   try {
-    const emailData = activeEmails.get(message);
-    
-    if (!emailData) {
-      return res.status(404).json({
-        success: false,
-        error: 'Email non trouvé. Vous devez d\'abord créer l\'email avec /temp?mail=create',
-        hint: 'Les emails générés précédemment dans une autre session ne sont plus accessibles.'
-      });
-    }
-    
     const messagesResponse = await axiosInstance.get(`${MAIL_TM_API}/messages`, {
       headers: {
-        'Authorization': `Bearer ${emailData.token}`
+        'Authorization': `Bearer ${token}`
       }
     });
     
@@ -132,10 +119,9 @@ app.get('/boite', async (req, res) => {
     console.error('Error fetching inbox:', error.response?.data || error.message);
     
     if (error.response?.status === 401) {
-      activeEmails.delete(message);
       return res.status(401).json({
         success: false,
-        error: 'Session expirée. Veuillez recréer un email avec /temp?mail=create'
+        error: 'Token invalide ou expiré. Veuillez recréer un email avec /temp?mail=create'
       });
     }
     
@@ -148,7 +134,7 @@ app.get('/boite', async (req, res) => {
 
 app.get('/message/:id', async (req, res) => {
   const { id } = req.params;
-  const { email } = req.query;
+  const { email, token } = req.query;
   
   if (!email || !email.includes('@')) {
     return res.status(400).json({ 
@@ -156,19 +142,16 @@ app.get('/message/:id', async (req, res) => {
     });
   }
   
+  if (!token) {
+    return res.status(400).json({ 
+      error: 'Token manquant'
+    });
+  }
+  
   try {
-    const emailData = activeEmails.get(email);
-    
-    if (!emailData) {
-      return res.status(404).json({
-        success: false,
-        error: 'Email non trouvé'
-      });
-    }
-    
     const messageResponse = await axiosInstance.get(`${MAIL_TM_API}/messages/${id}`, {
       headers: {
-        'Authorization': `Bearer ${emailData.token}`
+        'Authorization': `Bearer ${token}`
       }
     });
     
@@ -201,23 +184,20 @@ app.get('/', (req, res) => {
     message: 'API Email Temporaire',
     description: 'API pour générer des emails temporaires et récupérer la boîte de réception',
     routes: {
-      'GET /temp?mail=create': 'Générer un nouvel email temporaire',
-      'GET /boite?message=EMAIL': 'Récupérer la boîte de réception pour un email donné',
-      'GET /message/:id?email=EMAIL': 'Lire le contenu complet d\'un message'
+      'GET /temp?mail=create': 'Générer un nouvel email temporaire (retourne email + token)',
+      'GET /boite?message=EMAIL&token=TOKEN': 'Récupérer la boîte de réception',
+      'GET /message/:id?email=EMAIL&token=TOKEN': 'Lire le contenu complet d\'un message'
     },
     exemple: {
       creer_email: '/temp?mail=create',
-      voir_boite: '/boite?message=exemple@domain.com',
-      lire_message: '/message/MESSAGE_ID?email=exemple@domain.com'
-    },
-    note: 'Les emails sont stockés en mémoire et seront perdus au redémarrage du serveur.'
+      voir_boite: '/boite?message=exemple@domain.com&token=VOTRE_TOKEN',
+      lire_message: '/message/MESSAGE_ID?email=exemple@domain.com&token=VOTRE_TOKEN'
+    }
   });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Serveur API Email Temporaire démarré sur http://0.0.0.0:${PORT}`);
-  console.log('Routes disponibles:');
-  console.log('  GET /temp?mail=create - Générer un email temporaire');
-  console.log('  GET /boite?message=EMAIL - Récupérer la boîte de réception');
-  console.log('  GET /message/:id?email=EMAIL - Lire un message');
 });
+
+module.exports = app;

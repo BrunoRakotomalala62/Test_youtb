@@ -21,10 +21,10 @@ Génère un nouvel email temporaire.
 }
 ```
 
-### GET /boite?message=EMAIL
+### GET /boite?message=EMAIL&token=TOKEN
 Récupère la boîte de réception pour l'email spécifié.
 
-**Exemple:** `/boite?message=example@domain.com`
+**Exemple:** `/boite?message=example@domain.com&token=VOTRE_TOKEN`
 
 **Réponse:**
 ```json
@@ -36,7 +36,7 @@ Récupère la boîte de réception pour l'email spécifié.
 }
 ```
 
-### GET /message/:id?email=EMAIL
+### GET /message/:id?email=EMAIL&token=TOKEN
 Lit le contenu complet d'un message spécifique.
 
 ## Structure du Projet
