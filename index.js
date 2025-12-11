@@ -6,14 +6,6 @@ const PORT = process.env.PORT || 5000;
 
 const MAIL_TM_API = 'https://api.mail.tm';
 
-const axiosInstance = axios.create({
-  headers: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json'
-  },
-  timeout: 30000
-});
-
 function generateRandomString(length) {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
   let result = '';
@@ -31,7 +23,14 @@ app.get('/temp', async (req, res) => {
   }
   
   try {
-    const domainsResponse = await axiosInstance.get(`${MAIL_TM_API}/domains`);
+    const domainsResponse = await axios.get(`${MAIL_TM_API}/domains`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      timeout: 25000
+    });
+    
     const domains = domainsResponse.data['hydra:member'] || domainsResponse.data;
     
     if (!domains || domains.length === 0) {
@@ -46,14 +45,26 @@ app.get('/temp', async (req, res) => {
     const email = `${username}@${domain}`;
     const password = generateRandomString(16);
     
-    await axiosInstance.post(`${MAIL_TM_API}/accounts`, {
+    await axios.post(`${MAIL_TM_API}/accounts`, {
       address: email,
       password: password
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      timeout: 25000
     });
     
-    const tokenResponse = await axiosInstance.post(`${MAIL_TM_API}/token`, {
+    const tokenResponse = await axios.post(`${MAIL_TM_API}/token`, {
       address: email,
       password: password
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      timeout: 25000
     });
     
     const token = tokenResponse.data.token;
@@ -67,11 +78,14 @@ app.get('/temp', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Error creating email:', error.response?.data || error.message);
-    res.status(500).json({
+    const errorDetails = {
       success: false,
-      error: error.response?.data?.message || error.message
-    });
+      error: error.message,
+      status: error.response?.status,
+      data: error.response?.data
+    };
+    console.error('Error creating email:', JSON.stringify(errorDetails));
+    res.status(500).json(errorDetails);
   }
 });
 
@@ -91,10 +105,13 @@ app.get('/boite', async (req, res) => {
   }
   
   try {
-    const messagesResponse = await axiosInstance.get(`${MAIL_TM_API}/messages`, {
+    const messagesResponse = await axios.get(`${MAIL_TM_API}/messages`, {
       headers: {
-        'Authorization': `Bearer ${token}`
-      }
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      timeout: 25000
     });
     
     const messages = messagesResponse.data['hydra:member'] || messagesResponse.data || [];
@@ -149,10 +166,13 @@ app.get('/message/:id', async (req, res) => {
   }
   
   try {
-    const messageResponse = await axiosInstance.get(`${MAIL_TM_API}/messages/${id}`, {
+    const messageResponse = await axios.get(`${MAIL_TM_API}/messages/${id}`, {
       headers: {
-        'Authorization': `Bearer ${token}`
-      }
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      timeout: 25000
     });
     
     const msg = messageResponse.data;
@@ -196,8 +216,10 @@ app.get('/', (req, res) => {
   });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Serveur API Email Temporaire démarré sur http://0.0.0.0:${PORT}`);
-});
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Serveur API Email Temporaire démarré sur http://0.0.0.0:${PORT}`);
+  });
+}
 
 module.exports = app;
